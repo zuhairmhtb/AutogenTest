@@ -123,8 +123,8 @@ class HuggingFaceModelFactory:
         self.pipeline_kwargs = pipeline_kwargs
         self.temperature = temperature
 
-        if not self._is_model_supported():
-            raise ValueError(f"Model {self.model_name} is not supported")
+        # if not self._is_model_supported():
+        #     raise ValueError(f"Model {self.model_name} is not supported")
 
 
     def _is_model_supported(self)->bool:
@@ -159,10 +159,30 @@ class HuggingFaceModelFactory:
         except:
             return False
     
-    def _build_qa_adapter(self)->SKChatCompletionAdapter:
+    def _build_qa_adapter(self) -> SKChatCompletionAdapter:
         """
+        Builds a question answering adapter using LaMini-T5-61M model
+        Returns:
+            SKChatCompletionAdapter: The adapter configured for question answering
         """
-        pass
+        semantic_client = HuggingFaceTextCompletion(
+            ai_model_id="MBZUAI/LaMini-T5-61M",
+            task=self.model_type.value,
+            device=self.device,
+            model_kwargs=self.model_kwargs,
+            pipeline_kwargs=self.pipeline_kwargs
+        )
+        
+        settings = HuggingFacePromptExecutionSettings(
+            temperature=self.temperature
+        )
+        
+        return SKChatCompletionAdapter(
+            sk_client=semantic_client,
+            kernel=Kernel(memory=NullMemory()),
+            prompt_settings=settings
+        )
+
     def build(self)->SKChatCompletionAdapter:
         """
         Build a SKChatCompletionAdapter with the specified model
@@ -173,7 +193,7 @@ class HuggingFaceModelFactory:
             return self._build_qa_adapter()
         semantic_client = HuggingFaceTextCompletion(
                 ai_model_id=self.model_name,
-                task=self.model_type,
+                task=self.model_type.value,
                 device=self.device,
                 model_kwargs=self.model_kwargs,
                 pipeline_kwargs=self.pipeline_kwargs
@@ -186,3 +206,32 @@ class HuggingFaceModelFactory:
             kernel=Kernel(memory=NullMemory()),
             prompt_settings=settings
         )
+
+async def test_factory():
+    # Create factory instance for QA model
+    factory = HuggingFaceModelFactory(
+        model_name="MBZUAI/LaMini-T5-61M",
+        model_type=HuggingFaceModelType.TEXT_TO_TEXT_GENERATION,
+        device=-1  # Use CPU, change to cuda device number for GPU
+    )
+    
+    # Build the adapter
+    qa_adapter = factory.build()
+    
+    # Test with a sample question
+    test_message = UserMessage(
+        source="user",
+        content="What is the capital of France?"
+    )
+    
+    try:
+        response = await qa_adapter.create(test_message)
+        print("Model Response:", response.content)
+        print("Test passed: Model successfully created and generated response")
+        return True
+    except Exception as e:
+        print(f"Test failed: {str(e)}")
+        return False
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(test_factory())
